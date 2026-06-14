@@ -1,0 +1,28 @@
+# Render Blueprint — deploys the VECTO multiplayer server.
+# In Render: New → Blueprint → point at this repo. Or configure a Web Service
+# manually with Root Directory = backend, Build = npm install, Start = npm start.
+services:
+  - type: web
+    name: vecto-multiplayer
+    runtime: node
+    rootDir: backend            # deploy only the backend folder (vendored generator is inside it)
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: CORS_ORIGIN
+        value: "*"              # lock down to your frontend origin for production
+      - key: RACE_ROWS
+        value: "48"
+      - key: RACE_COLS
+        value: "28"
+      - key: RACE_LEVEL
+        value: "79"
+      - key: RACE_DURATION_MS
+        value: "120000"
+      # Optional durability — set to a MongoDB Atlas connection string in the
+      # Render dashboard (kept out of source). Without it, the server runs on
+      # its in-memory store (rooms are not persisted across restarts).
+      # - key: MONGO_URI
+      #   sync: false

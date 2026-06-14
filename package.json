@@ -1,0 +1,21 @@
+{
+  "name": "vecto-multiplayer-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Realtime multiplayer (live race) server for VECTO — Node + ws + MongoDB",
+  "type": "commonjs",
+  "main": "app.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node --watch app.js",
+    "sync-generator": "node scripts/sync-generator.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mongodb": "^6.8.0",
+    "ws": "^8.21.0"
+  }
+}
