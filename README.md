@@ -24,17 +24,20 @@ board wins; remaining players keep racing for 2nd/3rd/4th placement.
 
 ```
 backend/
+  app.js                       entry point (HTTP health/debug + ws server)
+  vendor/generator/            vendored copy of frontend/js (npm run sync-generator)
   src/
     config.js                  env-driven config (port, mongo, race size, jsDir)
     db.js                      MongoDB connection + collections
     generator/
-      loadGenerator.js         loads frontend/js into a vm sandbox → build()
+      loadGenerator.js         loads the generator into a vm sandbox → build()
       serializeBoard.js        Generator result → portable V5 board JSON
     services/
       PuzzleService.js         generate + store board (puzzles collection)
       RoomService.js           room lifecycle, placement, synced reveal
-    socket/registerHandlers.js Socket.IO event wiring
-    server.js                  entry point (HTTP health/debug + Socket.IO)
+    realtime/
+      transport.js             ws room membership + JSON broadcast
+      wsHandlers.js            ws connection + message routing (request/ack)
 ```
 
 ## Setup
@@ -45,7 +48,7 @@ cp .env.example .env          # adjust if needed
 npm install
 # ensure MongoDB is running locally (mongodb://127.0.0.1:27017) — e.g. via Docker:
 #   docker run -d -p 27017:27017 --name vecto-mongo mongo:7
-npm run dev                   # node --watch src/server.js
+npm run dev                   # node --watch app.js
 ```
 
 Sanity checks:

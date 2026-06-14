@@ -9,14 +9,37 @@
 
 const { ObjectId } = require('mongodb');
 const db = require('../db');
+const config = require('../config');
 
 class PuzzleService {
     constructor(generator) {
         this.generator = generator; // from createGenerator()
     }
 
+    // Chooses round params: usually a rectangular/square board, sometimes a
+    // shaped (milestone) board paired with its intended sizes.
+    _pickParams() {
+        const r = config.race;
+        if (Math.random() < r.shapedChance) {
+            // Milestone levels in range (multiples of 10) → shaped masks.
+            const levels = [];
+            for (let l = Math.ceil(r.levelMin / 10) * 10; l <= r.levelMax; l += 10) levels.push(l);
+            if (levels.length) {
+                const level = levels[Math.floor(Math.random() * levels.length)];
+                const sizes = this.generator.sizesForLevel(level);
+                if (sizes && sizes.length) {
+                    const s = sizes[Math.floor(Math.random() * sizes.length)];
+                    return { rows: s.rows, cols: s.cols, level };
+                }
+            }
+        }
+        return r.pick(); // rectangular / square
+    }
+
     // Generates a fresh board and persists it. Returns { puzzleId, board }.
-    async generateAndStore({ rows, cols, level }) {
+    // With no params, picks a random size + level for the round.
+    async generateAndStore(params) {
+        const { rows, cols, level } = params || this._pickParams();
         const t0 = Date.now();
         const board = this.generator.build({ rows, cols, level });
         const genMs = Date.now() - t0;
@@ -28,8 +51,8 @@ class PuzzleService {
             createdAt: new Date(),
         };
         const res = await db.puzzles().insertOne(doc);
-        console.log(`[puzzle] generated ${board.gridRows}x${board.gridCols} ` +
-            `(${board.paths.length} paths, ${genMs}ms) → ${res.insertedId}`);
+        console.log(`[puzzle] generated ${board.gridRows}x${board.gridCols} L${level} ` +
+            `(${board.paths.length} paths, ${board.boardDifficulty}, ${genMs}ms) → ${res.insertedId}`);
 
         return { puzzleId: res.insertedId.toString(), board };
     }

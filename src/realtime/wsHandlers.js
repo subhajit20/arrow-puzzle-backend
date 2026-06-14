@@ -6,7 +6,7 @@
 // Client → Server (requests carry a reqId; server replies with an `ack`):
 //   { type:'room:create', reqId, name }
 //   { type:'room:join',   reqId, code, name }
-//   { type:'room:start',  reqId }
+//   { type:'room:start',  reqId, rounds }          (host; number of rounds)
 //   { type:'race:progress', cleared, total }      (no ack)
 //   { type:'race:finished', reqId }
 //   { type:'room:leave' }                          (no ack)
@@ -14,11 +14,12 @@
 // Server → Client:
 //   { type:'ack', reqId, payload }                 (request result)
 //   { type:'room:update', room }
-//   { type:'race:countdown', startAt }
-//   { type:'race:start', startAt, endsAt, durationMs, board, room }
+//   { type:'race:countdown', startAt, round, totalRounds }
+//   { type:'race:start', startAt, endsAt, durationMs, round, totalRounds, board, room }
 //   { type:'race:progress', playerId, cleared, total }
 //   { type:'race:placement', playerId, placement }
-//   { type:'race:finished', results }
+//   { type:'round:result', round, totalRounds, roundResults, standings, nextRoundInMs }  (non-final)
+//   { type:'game:over', round, totalRounds, roundResults, standings, champions }         (final)
 // =============================================================================
 
 const HEARTBEAT_MS = 30000;
@@ -72,8 +73,8 @@ function registerWs(wss, rooms, transport) {
                     }
 
                     case 'room:start': {
-                        await rooms.startRace(ws._code, ws._playerId);
-                        ack({ ok: true }); // startRace broadcasts countdown + room:update + (later) race:start
+                        await rooms.startGame(ws._code, ws._playerId, msg.rounds);
+                        ack({ ok: true }); // startGame broadcasts countdown + room:update + (later) race:start
                         break;
                     }
 

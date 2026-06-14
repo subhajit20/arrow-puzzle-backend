@@ -1,24 +1,28 @@
 // =============================================================================
-// RoomService.js — authoritative room lifecycle + race orchestration.
+// RoomService.js — authoritative room lifecycle + multi-round race orchestration.
 //
-// Live state is held in memory (the source of truth for an in-flight race);
-// a write-through copy is persisted to MongoDB for durability and results.
-// The board is held in memory on the room and emitted to clients ONLY at the
-// synchronized reveal (status → 'active') — never in a public room payload.
+// A "game" is a sequence of N rounds (host-chosen). Each round is one race on a
+// freshly generated board. Players earn points per round by placement; after
+// the final round the cumulative leader(s) are crowned champion. The room is
+// reusable — after a game ends the host can pick rounds and start another one
+// without anyone re-joining.
 //
-// Lifecycle:  lobby → countdown → active → finished
-//   - lobby:    players join (max 4); host can start
-//   - countdown: board generated + held; clients see a timer, NOT the board
-//   - active:    board revealed to everyone at the same instant; racing
-//   - finished:  all players finished or DNF; placements 1..N reported
+// Lifecycle:
+//   lobby → [ countdown → active → intermission ]×(N-1) → countdown → active → gameover
+//   gameover → (host starts again) → lobby-equivalent → countdown → …
+//
+// The board is held in server memory and emitted ONLY at the synchronized
+// reveal (status → 'active') — never in a public room payload.
 // =============================================================================
 
 const db = require('../db');
 const config = require('../config');
 const { generateCode } = require('../util/roomCode');
 
-// Terminal per-player states (player can no longer affect the race outcome).
+// Terminal per-player states for a round (can no longer affect the round).
 const TERMINAL = new Set(['finished', 'dnf', 'disconnected', 'timeup']);
+// States where the room is idle and a new game / join is allowed.
+const IDLE = new Set(['lobby', 'gameover']);
 
 class RoomService {
     constructor(transport, puzzleService) {
@@ -50,10 +54,13 @@ class RoomService {
             board: null,        // in-memory only; never in public payloads
             startAt: null,
             endsAt: null,
+            rounds: 1,          // total rounds for the current game
+            currentRound: 0,    // 1-based once a game is running
             maxPlayers: config.maxPlayers,
             createdAt: Date.now(),
             revealTimer: null,
             raceTimer: null,
+            intermissionTimer: null,
             players: [this._newPlayer(playerId, name, socketId, true)],
         };
         this.rooms.set(code, room);
@@ -63,8 +70,8 @@ class RoomService {
 
     async joinRoom(code, name, socketId) {
         const room = this.rooms.get(code);
-        if (!room)                       throw new Error('Room not found');
-        if (room.status !== 'lobby')     throw new Error('Race already started');
+        if (!room)                  throw new Error('Room not found');
+        if (!IDLE.has(room.status)) throw new Error('Game already in progress');
         if (room.players.length >= room.maxPlayers) throw new Error('Room is full');
 
         const playerId = generateCode(8);
@@ -79,46 +86,72 @@ class RoomService {
             name: (name || 'Player').slice(0, 16),
             socketId,
             isHost,
-            status: 'lobby',   // lobby → racing → finished/dnf/disconnected
+            // Per-round (reset each round):
+            status: 'lobby',
             cleared: 0,
             total: 0,
             finishedAt: null,
             placement: null,
+            // Per-game (reset each game):
+            gamePoints: 0,
+            roundsWon: 0,
         };
     }
 
-    // ── Start the race (host only) ────────────────────────────────────────────
+    // ── Start a game (host only) ───────────────────────────────────────────────
 
-    async startRace(code, requesterId) {
+    async startGame(code, requesterId, rounds) {
         const room = this.rooms.get(code);
         if (!room)                       throw new Error('Room not found');
         if (room.hostId !== requesterId) throw new Error('Only the host can start');
-        if (room.status !== 'lobby')     throw new Error('Race already started');
+        if (!IDLE.has(room.status))      throw new Error('Game already in progress');
 
-        // Generate + store the board now. It stays server-side until reveal.
-        const { puzzleId, board } = await this.puzzles.generateAndStore(config.race);
+        const n = Math.max(1, Math.min(config.maxRounds, parseInt(rounds, 10) || 1));
+        room.rounds = n;
+        room.currentRound = 0;
+        for (const p of room.players) { p.gamePoints = 0; p.roundsWon = 0; }
+
+        await this._beginRound(code);
+    }
+
+    // Generates the next round's board and runs its countdown.
+    async _beginRound(code) {
+        const room = this.rooms.get(code);
+        if (!room) return;
+        room.currentRound += 1;
+
+        // Tell clients a board is being generated (larger boards take a moment),
+        // so they can show a loader until the countdown begins.
+        this.transport.broadcast(code, 'race:generating', {
+            round: room.currentRound, totalRounds: room.rounds,
+        });
+
+        // Generate + store the board now (random size + level). Stays server-side until reveal.
+        const { puzzleId, board } = await this.puzzles.generateAndStore();
         room.puzzleId = puzzleId;
-        room.board    = board;
+        room.board = board;
 
-        // Enter countdown; clients get a start timestamp but NOT the board.
-        room.status  = 'countdown';
-        room.startAt = Date.now() + config.countdownMs;
+        // Reset per-round fields for active participants (skip those who left).
         for (const p of room.players) {
+            if (p.status === 'disconnected') continue;
             p.status = 'racing';
             p.cleared = 0;
             p.total = board.paths.length;
             p.finishedAt = null;
             p.placement = null;
         }
+
+        room.status = 'countdown';
+        room.startAt = Date.now() + config.countdownMs;
+        room.intermissionTimer = null;
         await this._persist(room);
 
-        this.transport.broadcast(code, 'race:countdown', { startAt: room.startAt });
+        this.transport.broadcast(code, 'race:countdown', {
+            startAt: room.startAt, round: room.currentRound, totalRounds: room.rounds,
+        });
         this.transport.broadcast(code, 'room:update', { room: this.publicRoom(room) });
 
-        // Reveal the board to everyone simultaneously when the countdown ends.
         room.revealTimer = setTimeout(() => this._reveal(code), config.countdownMs);
-
-        return this.publicRoom(room);
     }
 
     async _reveal(code) {
@@ -131,20 +164,20 @@ class RoomService {
 
         // THE reveal — first and only time the board crosses the wire.
         this.transport.broadcast(code, 'race:start', {
-            startAt:    room.startAt,
-            endsAt:     room.endsAt,
-            durationMs: config.raceDurationMs,
-            board:      room.board,
-            room:       this.publicRoom(room),
+            startAt:     room.startAt,
+            endsAt:      room.endsAt,
+            durationMs:  config.raceDurationMs,
+            round:       room.currentRound,
+            totalRounds: room.rounds,
+            board:       room.board,
+            room:        this.publicRoom(room),
         });
 
-        // Time limit — at expiry, unfinished players are ranked by % cleared.
-        room.raceTimer = setTimeout(() => this._timeUp(code), config.raceDurationMs);
+        room.raceTimer = setTimeout(() => this._endRound(code, true), config.raceDurationMs);
     }
 
-    // ── In-race events ──────────────────────────────────────────────────────
+    // ── In-round events ───────────────────────────────────────────────────────
 
-    // Lightweight progress tick — broadcast only, not persisted per tick.
     markProgress(code, playerId, cleared, total) {
         const room = this.rooms.get(code);
         if (!room || room.status !== 'active') return null;
@@ -155,7 +188,6 @@ class RoomService {
         return { playerId, cleared: p.cleared, total: p.total };
     }
 
-    // A player cleared the whole board → assign the next placement.
     async playerFinished(code, playerId) {
         const room = this.rooms.get(code);
         if (!room || room.status !== 'active') return null;
@@ -168,39 +200,22 @@ class RoomService {
         p.finishedAt = Date.now();
 
         await this._persist(room);
-        const ended = await this._maybeFinish(room);
-        return { placement: p.placement, ended };
-    }
-
-    // A player ran out of lives or quit mid-race → DNF (no placement).
-    async playerOut(code, playerId, reason = 'dnf') {
-        const room = this.rooms.get(code);
-        if (!room) return null;
-        const p = this._player(room, playerId);
-        if (!p || TERMINAL.has(p.status)) return null;
-
-        p.status = reason === 'disconnected' ? 'disconnected' : 'dnf';
-        await this._persist(room);
-        const ended = room.status === 'active' ? await this._maybeFinish(room) : false;
-        return { status: p.status, ended };
+        await this._maybeEndRound(room);
+        return { placement: p.placement };
     }
 
     // ── Leave / disconnect ────────────────────────────────────────────────────
 
-    // Returns { room, removed, closed } so the caller can broadcast/cleanup.
     async handleLeave(code, playerId) {
         const room = this.rooms.get(code);
         if (!room) return { closed: true };
         const p = this._player(room, playerId);
         if (!p) return { room };
 
-        if (room.status === 'lobby') {
-            // Drop them entirely; reassign host or close the room if empty.
+        if (IDLE.has(room.status)) {
+            // Idle room → drop entirely; reassign host or destroy if empty.
             room.players = room.players.filter((q) => q.id !== playerId);
-            if (room.players.length === 0) {
-                this._destroy(room);
-                return { closed: true, code };
-            }
+            if (room.players.length === 0) { this._destroy(room); return { closed: true, code }; }
             if (room.hostId === playerId) {
                 room.hostId = room.players[0].id;
                 room.players[0].isHost = true;
@@ -209,12 +224,13 @@ class RoomService {
             return { room };
         }
 
-        // Mid-race: mark DNF/disconnected and possibly end the race.
-        await this.playerOut(code, playerId, 'disconnected');
+        // Mid-game: mark disconnected; may end the current round.
+        p.status = 'disconnected';
+        await this._persist(room);
+        if (room.status === 'active') await this._maybeEndRound(room);
         return { room };
     }
 
-    // Find the room/player a socket belongs to (for disconnect handling).
     findBySocket(socketId) {
         for (const room of this.rooms.values()) {
             const p = room.players.find((q) => q.socketId === socketId);
@@ -223,28 +239,20 @@ class RoomService {
         return null;
     }
 
-    // ── Race end ──────────────────────────────────────────────────────────────
+    // ── Round / game end ────────────────────────────────────────────────────────
 
-    // Ends the race if every player is in a terminal state. Returns true if it did.
-    async _maybeFinish(room) {
-        const allDone = room.players.every((p) => TERMINAL.has(p.status));
-        if (!allDone) return false;
-        await this._endRace(room, false);
-        return true;
+    // Ends the round once every player is terminal.
+    async _maybeEndRound(room) {
+        if (room.players.every((p) => TERMINAL.has(p.status))) {
+            await this._endRound(room.code, false);
+        }
     }
 
-    // Fired when the race clock expires.
-    async _timeUp(code) {
+    // Ends the current round: ranks unfinished players by % (on timeout), awards
+    // points, then either starts the next round or crowns the champion(s).
+    async _endRound(code, byTimeout) {
         const room = this.rooms.get(code);
         if (!room || room.status !== 'active') return;
-        await this._endRace(room, true);
-    }
-
-    // Ends the race and broadcasts standings. On a timeout, players who never
-    // cleared the board are ranked by progress (% cleared) and placed after the
-    // finishers.
-    async _endRace(room, byTimeout) {
-        if (room.status === 'finished') return;
 
         if (byTimeout) {
             const ranked = room.players
@@ -254,30 +262,76 @@ class RoomService {
             for (const p of ranked) { p.placement = ++next; p.status = 'timeup'; }
         }
 
-        room.status = 'finished';
         if (room.revealTimer) { clearTimeout(room.revealTimer); room.revealTimer = null; }
         if (room.raceTimer)   { clearTimeout(room.raceTimer);   room.raceTimer = null; }
-        await this._persist(room);
 
-        this.transport.broadcast(room.code, 'race:finished', { results: this.buildResults(room) });
+        // Award round points: placement 1..K → K..1 points (K = ranked players).
+        const ranked = room.players.filter((p) => p.placement != null).length;
+        for (const p of room.players) {
+            if (p.placement != null) {
+                p.gamePoints += (ranked - p.placement + 1);
+                if (p.placement === 1) p.roundsWon += 1;
+            }
+        }
+
+        const isFinal = room.currentRound >= room.rounds;
+
+        if (isFinal) {
+            room.status = 'gameover';
+            await this._persist(room);
+            this.transport.broadcast(code, 'game:over', {
+                round: room.currentRound, totalRounds: room.rounds,
+                roundResults: this.buildRoundResults(room),
+                standings: this.buildStandings(room),
+                champions: this.computeChampions(room),
+            });
+        } else {
+            room.status = 'intermission';
+            await this._persist(room);
+            this.transport.broadcast(code, 'round:result', {
+                round: room.currentRound, totalRounds: room.rounds,
+                roundResults: this.buildRoundResults(room),
+                standings: this.buildStandings(room),
+                nextRoundInMs: config.roundIntermissionMs,
+            });
+            room.intermissionTimer = setTimeout(() => this._beginRound(code), config.roundIntermissionMs);
+        }
     }
 
-    // Standings: ranked players by placement (1..N), then anyone who left.
-    buildResults(room) {
-        const ranked = room.players
-            .filter((p) => p.placement != null)
-            .sort((a, b) => a.placement - b.placement);
-        const others = room.players.filter((p) => p.placement == null);
-        return [...ranked, ...others].map((p) => ({
+    // This round's placements + the points each player earned this round.
+    buildRoundResults(room) {
+        const ranked = room.players.filter((p) => p.placement != null).length;
+        const sorted = [...room.players].sort((a, b) => {
+            if (a.placement == null) return 1;
+            if (b.placement == null) return -1;
+            return a.placement - b.placement;
+        });
+        return sorted.map((p) => ({
             id: p.id, name: p.name, placement: p.placement, status: p.status,
-            solved: p.finishedAt != null, finishedAt: p.finishedAt,
-            cleared: p.cleared, total: p.total,
+            solved: p.finishedAt != null, cleared: p.cleared, total: p.total,
+            points: p.placement != null ? (ranked - p.placement + 1) : 0,
         }));
+    }
+
+    // Cumulative game standings, sorted by points then rounds won.
+    buildStandings(room) {
+        const max = Math.max(0, ...room.players.map((p) => p.gamePoints));
+        return [...room.players]
+            .sort((a, b) => (b.gamePoints - a.gamePoints) || (b.roundsWon - a.roundsWon) || a.name.localeCompare(b.name))
+            .map((p) => ({
+                id: p.id, name: p.name, gamePoints: p.gamePoints, roundsWon: p.roundsWon,
+                isChampion: room.status === 'gameover' && p.gamePoints === max && max > 0,
+            }));
+    }
+
+    computeChampions(room) {
+        const max = Math.max(0, ...room.players.map((p) => p.gamePoints));
+        if (max <= 0) return [];
+        return room.players.filter((p) => p.gamePoints === max).map((p) => ({ id: p.id, name: p.name }));
     }
 
     // ── Serialization ─────────────────────────────────────────────────────────
 
-    // Client-facing room payload — NEVER includes the board or socket ids.
     publicRoom(room) {
         return {
             code: room.code,
@@ -285,12 +339,15 @@ class RoomService {
             hostId: room.hostId,
             startAt: room.startAt,
             endsAt: room.endsAt || null,
+            rounds: room.rounds,
+            currentRound: room.currentRound,
             maxPlayers: room.maxPlayers,
             puzzleId: room.puzzleId,
             players: room.players.map((p) => ({
                 id: p.id, name: p.name, isHost: p.isHost, status: p.status,
                 cleared: p.cleared, total: p.total,
                 placement: p.placement, finishedAt: p.finishedAt,
+                gamePoints: p.gamePoints, roundsWon: p.roundsWon,
             })),
         };
     }
@@ -307,8 +364,9 @@ class RoomService {
     }
 
     _destroy(room) {
-        if (room.revealTimer) clearTimeout(room.revealTimer);
-        if (room.raceTimer)   clearTimeout(room.raceTimer);
+        if (room.revealTimer)       clearTimeout(room.revealTimer);
+        if (room.raceTimer)         clearTimeout(room.raceTimer);
+        if (room.intermissionTimer) clearTimeout(room.intermissionTimer);
         this.rooms.delete(room.code);
         db.rooms().deleteOne({ code: room.code }).catch(() => {});
     }

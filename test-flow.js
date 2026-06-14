@@ -4,7 +4,7 @@
 //   node test-flow.js
 
 const WebSocket = require('ws');
-const URL = process.env.URL || 'ws://localhost:3001';
+const URL = process.env.URL || 'wss://arrow-puzzle-backend.onrender.com';
 
 function client() {
     const ws = new WebSocket(URL);
@@ -12,7 +12,7 @@ function client() {
     ws.on('message', (d) => {
         let m; try { m = JSON.parse(d.toString()); } catch { return; }
         if (m.type === 'ack') { const r = pending[m.reqId]; if (r) { delete pending[m.reqId]; r(m.payload); } return; }
-        (handlers[m.type] || (() => {}))(m);
+        (handlers[m.type] || (() => { }))(m);
     });
     return {
         ready: new Promise((res) => ws.on('open', res)),
@@ -67,7 +67,7 @@ function client() {
     A(revealed[0].endsAt && revealed[0].endsAt > Date.now(), 'race:start carries a future endsAt (timer)');
     A(revealed[0].at - t0 >= 1000, `reveal waited for the countdown (~${revealed[0].at - t0}ms)`);
 
-    const p1 = await host.request('race:finished');     A(p1.placement === 1, `Alice → #${p1.placement}`);
+    const p1 = await host.request('race:finished'); A(p1.placement === 1, `Alice → #${p1.placement}`);
     const p2 = await guests[0].request('race:finished'); A(p2.placement === 2, `Bob → #${p2.placement}`);
     const p3 = await guests[1].request('race:finished'); A(p3.placement === 3, `Cara → #${p3.placement}`);
     const p4 = await guests[2].request('race:finished'); A(p4.placement === 4, `Dan → #${p4.placement}`);

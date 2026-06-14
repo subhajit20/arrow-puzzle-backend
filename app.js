@@ -26,7 +26,7 @@ async function main() {
     const generator = createGenerator();
     try {
         const t0 = Date.now();
-        const sample = generator.build(config.race);
+        const sample = generator.build(config.race.pick());
         console.log(`[generator] ready — sample ${sample.gridRows}x${sample.gridCols}, ` +
             `${sample.paths.length} paths in ${Date.now() - t0}ms`);
     } catch (e) {
@@ -51,7 +51,7 @@ async function main() {
         }
         if (url === '/debug/board') {
             try {
-                const board = generator.build(config.race);
+                const board = generator.build(config.race.pick());
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 return res.end(JSON.stringify(board));
             } catch (e) {

@@ -72,6 +72,13 @@ function createGenerator() {
             }
             return serializeResult(result, l);
         },
+
+        // The generator's size table for a level. For milestone levels
+        // (multiples of 10) this returns the shape's intended sizes.
+        sizesForLevel(level) {
+            sandbox.__L = level;
+            return vm.runInContext('gen.sizesForLevel(__L)', sandbox) || [];
+        },
     };
 }
 

@@ -37,17 +37,48 @@ module.exports = {
     // ranked by percentage cleared. Default 2 minutes.
     raceDurationMs: int(process.env.RACE_DURATION_MS, 120000),
 
+    // Pause between rounds (shows round standings before the next round begins).
+    roundIntermissionMs: int(process.env.ROUND_INTERMISSION_MS, 5000),
+
+    // Upper bound on rounds a host can pick for a game.
+    maxRounds: int(process.env.MAX_ROUNDS, 10),
+
     // Max players per room (your spec).
     maxPlayers: 4,
 
-    // Race board parameters. The generator is the same one the browser uses.
-    // 48×28 at level 7 → a full rectangle (~150 packed pieces, generates in
-    // well under 1s). Avoid multiples of 10 for RACE_LEVEL — those trigger
-    // milestone *shaped* masks (heart/donut) instead of a plain rectangle.
+    // Race board parameters. Each round picks a random size from this pool and
+    // a random level. The generator is the same one the browser uses; sizes are
+    // drawn from its known-good size tables (a mix of rectangles and squares).
+    // Level is randomized in [levelMin, levelMax] but NEVER a multiple of 10 —
+    // those are milestone levels that produce shaped (heart/donut) masks; we
+    // want plain rectangles/squares. The level is never surfaced to players.
     race: {
-        rows:  int(process.env.RACE_ROWS, 48),
-        cols:  int(process.env.RACE_COLS, 28),
-        level: int(process.env.RACE_LEVEL, 7),
+        sizes: [
+            // Rectangular (portrait)
+            { rows: 36, cols: 22 }, { rows: 40, cols: 24 }, { rows: 42, cols: 26 },
+            { rows: 44, cols: 28 }, { rows: 48, cols: 28 }, { rows: 50, cols: 30 },
+            { rows: 52, cols: 32 }, { rows: 56, cols: 34 },
+            // Square
+            { rows: 28, cols: 28 }, { rows: 34, cols: 34 },
+            { rows: 40, cols: 40 }, { rows: 46, cols: 46 },
+        ],
+        levelMin: int(process.env.RACE_LEVEL_MIN, 51),
+        levelMax: int(process.env.RACE_LEVEL_MAX, 300),
+
+        // Probability a round is a shaped (milestone) board — heart/donut/etc.
+        // at a multiple-of-10 level, using the shape's intended sizes. The rest
+        // are plain rectangles/squares.
+        shapedChance: parseFloat(process.env.RACE_SHAPED_CHANCE || '0.35'),
+
+        // Picks a random rectangular/square { rows, cols, level } for a round.
+        pick() {
+            const s = this.sizes[Math.floor(Math.random() * this.sizes.length)];
+            let level;
+            do {
+                level = this.levelMin + Math.floor(Math.random() * (this.levelMax - this.levelMin + 1));
+            } while (level % 10 === 0); // skip milestone (shaped-mask) levels
+            return { rows: s.rows, cols: s.cols, level };
+        },
     },
 
     // Absolute path to the generator source — vendored copy if present,
