@@ -62,7 +62,7 @@ module.exports = {
             { rows: 28, cols: 28 }, { rows: 34, cols: 34 },
             { rows: 40, cols: 40 }, { rows: 46, cols: 46 },
         ],
-        levelMin: int(process.env.RACE_LEVEL_MIN, 51),
+        levelMin: int(process.env.RACE_LEVEL_MIN, 10),
         levelMax: int(process.env.RACE_LEVEL_MAX, 300),
 
         // Probability a round is a shaped (milestone) board — heart/donut/etc.
