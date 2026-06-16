@@ -188,11 +188,21 @@ class RoomService {
         return { playerId, cleared: p.cleared, total: p.total };
     }
 
-    async playerFinished(code, playerId) {
+    async playerFinished(code, playerId, order) {
         const room = this.rooms.get(code);
         if (!room || room.status !== 'active') return null;
         const p = this._player(room, playerId);
         if (!p || TERMINAL.has(p.status)) return null;
+
+        // Server-authoritative finish: the client claims a win, but the server
+        // holds the board and replays the player's clear order to confirm it is
+        // a real, complete, collision-free solution. A bad/forged claim is
+        // rejected — the player stays in the race and can keep solving.
+        const check = this.puzzles.verifySolution(room.board, order);
+        if (!check.valid) {
+            console.warn(`[room] ${code} rejected finish from ${p.name} (${playerId}): ${check.reason}`);
+            return { rejected: true, reason: check.reason };
+        }
 
         const placed = room.players.filter((q) => q.placement != null).length;
         p.placement  = placed + 1;

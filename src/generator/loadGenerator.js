@@ -49,6 +49,38 @@ function buildSandbox() {
         var gen     = new Generator(builder, diff, val);
     `, sandbox);
 
+    // Solve verifier — replays a player's clear order against a serialized board
+    // using the SAME escape model the generator proves solvability with. A solve
+    // is valid only if every path was cleared, each in a position where its head
+    // ray could actually reach the edge given the paths cleared before it.
+    // Reuses Grid / Path / oracle so it can never drift from generation rules.
+    vm.runInContext(`
+        function __verifySolution(board, order) {
+            if (!board || !Array.isArray(board.paths)) return { valid: false, reason: 'no-board' };
+            if (!Array.isArray(order))                 return { valid: false, reason: 'order-missing' };
+            if (order.length !== board.paths.length)   return { valid: false, reason: 'order-length' };
+
+            const grid = new Grid(board.gridRows, board.gridCols);
+            const byId = new Map();
+            for (const pj of board.paths) {
+                const p = Path.fromLegacy(pj);
+                byId.set(p.id, p);
+                for (const n of p.nodes) grid.setOwner(n.r, n.c, p.id);
+            }
+
+            const removed = new Set();
+            for (const id of order) {
+                const p = byId.get(id);
+                if (!p)             return { valid: false, reason: 'unknown-path:' + id };
+                if (removed.has(id)) return { valid: false, reason: 'duplicate-path:' + id };
+                if (!oracle.canEscape(p, removed, grid)) return { valid: false, reason: 'illegal-clear:' + id };
+                removed.add(id);
+            }
+            if (removed.size !== board.paths.length) return { valid: false, reason: 'incomplete' };
+            return { valid: true, reason: 'ok' };
+        }
+    `, sandbox);
+
     return sandbox;
 }
 
@@ -78,6 +110,14 @@ function createGenerator() {
         sizesForLevel(level) {
             sandbox.__L = level;
             return vm.runInContext('gen.sizesForLevel(__L)', sandbox) || [];
+        },
+
+        // Verifies a player's clear order against a serialized board.
+        // Returns { valid: boolean, reason: string }.
+        verifySolution(board, order) {
+            sandbox.__vb = board;
+            sandbox.__vo = order;
+            return vm.runInContext('__verifySolution(__vb, __vo)', sandbox);
         },
     };
 }
