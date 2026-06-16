@@ -57,6 +57,13 @@ class PuzzleService {
         return { puzzleId: res.insertedId.toString(), board };
     }
 
+    // Verifies a player's clear order solves the given board. Returns
+    // { valid: boolean, reason: string }. Delegates to the headless generator
+    // so verification uses the exact escape model the board was built with.
+    verifySolution(board, order) {
+        return this.generator.verifySolution(board, order);
+    }
+
     // Fetches a stored board by id (used for reconnect-into-active-race).
     async getBoard(puzzleId) {
         const doc = await db.puzzles().findOne({ _id: new ObjectId(puzzleId) });

@@ -8,7 +8,7 @@
 //   { type:'room:join',   reqId, code, name }
 //   { type:'room:start',  reqId, rounds }          (host; number of rounds)
 //   { type:'race:progress', cleared, total }      (no ack)
-//   { type:'race:finished', reqId }
+//   { type:'race:finished', reqId, order }         (order: cleared path ids, for solve verification)
 //   { type:'room:leave' }                          (no ack)
 //
 // Server → Client:
@@ -85,12 +85,15 @@ function registerWs(wss, rooms, transport) {
                     }
 
                     case 'race:finished': {
-                        const res = await rooms.playerFinished(ws._code, ws._playerId);
-                        if (res) {
+                        const res = await rooms.playerFinished(ws._code, ws._playerId, msg.order);
+                        if (res && res.placement != null) {
                             transport.broadcast(ws._code, 'race:placement', { playerId: ws._playerId, placement: res.placement });
                             const room = rooms.get(ws._code);
                             if (room) transport.broadcast(ws._code, 'room:update', { room: rooms.publicRoom(room) });
                             ack({ placement: res.placement });
+                        } else if (res && res.rejected) {
+                            // Solve could not be verified — do NOT record a placement.
+                            ack({ error: 'Solve could not be verified', reason: res.reason });
                         } else {
                             ack({ error: 'Could not record finish' });
                         }
