@@ -27,8 +27,8 @@ async function main() {
     try {
         const t0 = Date.now();
         const sample = generator.build(config.race.pick());
-        console.log(`[generator] ready — sample ${sample.gridRows}x${sample.gridCols}, ` +
-            `${sample.paths.length} paths in ${Date.now() - t0}ms`);
+        console.log(`[generator] ready — sample ${sample.ROWS}x${sample.COLS}, ` +
+            `${sample.arrows.length} arrows in ${Date.now() - t0}ms`);
     } catch (e) {
         console.error('[generator] FAILED to produce a board:', e.message);
         process.exit(1);

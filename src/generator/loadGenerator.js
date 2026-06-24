@@ -1,22 +1,28 @@
 // =============================================================================
 // loadGenerator.js — run the browser board generator headlessly in Node.
 //
-// The generator (js/*.js) is pure logic with zero DOM coupling — proven by
-// test-regression.js, which loads it into a bare vm context. We replicate that
-// here so the SERVER can generate boards: same code, no port, no bundling.
+// The generation subset (frontend/js: constants/utils/GridShape/BoardGenerator)
+// is pure logic with zero DOM coupling, so we load it into a bare vm context
+// and the SERVER generates boards with the EXACT same code the browser uses —
+// no port, no bundling, no drift.
 //
-// createGenerator() returns { build({rows, cols, level}) → serialized board }.
+// createGenerator() returns:
+//   build({ rows, cols, level, tier? }) → serialized board (client-ready shape)
+//   sizesForLevel(level)                → [{ rows, cols }]
+//   verifySolution(board, order)        → { valid, reason }
 // =============================================================================
 
 const fs   = require('fs');
 const vm   = require('vm');
 const path = require('path');
 const config = require('../config');
-const { serializeResult } = require('./serializeBoard');
+const { serializeBoard } = require('./serializeBoard');
 const FILES = require('./files');
 
 function buildSandbox() {
-    // Same minimal global surface the generator expects (no DOM, no canvas).
+    // Minimal global surface (no DOM/canvas). We hand the vm Node's OWN Array /
+    // Set / Map / typed arrays, so values cross the boundary without realm
+    // mismatches (e.g. Array.isArray on a board passed in from Node works).
     const sandbox = {
         console: { log() {}, info() {}, warn() {}, error() {} },
         Math, Array, Object, Number, String, Boolean, JSON,
@@ -40,43 +46,67 @@ function buildSandbox() {
         }
     }
 
-    // Instantiate the pipeline as sandbox globals (same wiring as the harness).
+    // Instantiate the engine + server-side helpers as sandbox globals.
     vm.runInContext(`
-        var oracle  = new SolvabilityOracle();
-        var builder = new RCBuilder(oracle);
-        var diff    = new DifficultyEngine(oracle);
-        var val     = new Validator(oracle);
-        var gen     = new Generator(builder, diff, val);
-    `, sandbox);
+        var __gen = new BoardGenerator();
 
-    // Solve verifier — replays a player's clear order against a serialized board
-    // using the SAME escape model the generator proves solvability with. A solve
-    // is valid only if every path was cleared, each in a position where its head
-    // ray could actually reach the edge given the paths cleared before it.
-    // Reuses Grid / Path / oracle so it can never drift from generation rules.
-    vm.runInContext(`
-        function __verifySolution(board, order) {
-            if (!board || !Array.isArray(board.paths)) return { valid: false, reason: 'no-board' };
-            if (!Array.isArray(order))                 return { valid: false, reason: 'order-missing' };
-            if (order.length !== board.paths.length)   return { valid: false, reason: 'order-length' };
+        // Mirror GameController.newGame's board selection, server-side, with an
+        // explicit size + level. Milestone levels (multiples of 10) become shaped
+        // (mask) boards at the shape's intended size; everything else is the given
+        // rectangle/square. Difficulty tier defaults to the level's tier.
+        function __build(rows, cols, level, tierName) {
+            var tier = tierName ? TIERS.find(function (t) { return t.name === tierName; }) : null;
+            if (!tier) tier = tierForLevel(level);
 
-            const grid = new Grid(board.gridRows, board.gridCols);
-            const byId = new Map();
-            for (const pj of board.paths) {
-                const p = Path.fromLegacy(pj);
-                byId.set(p.id, p);
-                for (const n of p.nodes) grid.setOwner(n.r, n.c, p.id);
+            var COLS = cols, ROWS = rows, mask = null, motifs = null;
+            var shapeName = (level % 10 === 0) ? GridShape.forLevel(level) : null;
+            if (shapeName) {
+                var ss = GridShape.milestoneSize(level);
+                COLS = ss.COLS; ROWS = ss.ROWS;
+                mask = GridShape.maskFor(shapeName, COLS, ROWS);
+                motifs = GridShape.motifsFor(shapeName);
             }
 
-            const removed = new Set();
-            for (const id of order) {
-                const p = byId.get(id);
-                if (!p)             return { valid: false, reason: 'unknown-path:' + id };
-                if (removed.has(id)) return { valid: false, reason: 'duplicate-path:' + id };
-                if (!oracle.canEscape(p, removed, grid)) return { valid: false, reason: 'illegal-clear:' + id };
+            var result = __gen.generateForTier(COLS, ROWS, mask, tier, motifs);
+            return { level: level, tier: tier.name, COLS: COLS, ROWS: ROWS, mask: mask, arrows: result.arrows };
+        }
+
+        // Sizes a level can use (for shaped/milestone rounds the caller picks one).
+        function __sizesForLevel(level) {
+            var ss = (level % 10 === 0) ? GridShape.milestoneSize(level) : sizeForLevel(level);
+            return [{ rows: ss.ROWS, cols: ss.COLS }];
+        }
+
+        // Server-authoritative solve check: replay a player's clear order under the
+        // SAME escape rule the board was built with — each tapped arrow's head ray
+        // to the edge must be clear of other still-present arrows (its own cells
+        // allowed). Reuses the engine's lane() so it can never drift from gameplay.
+        function __verifySolution(board, order) {
+            if (!board || !Array.isArray(board.arrows)) return { valid: false, reason: 'no-board' };
+            if (!Array.isArray(order))                  return { valid: false, reason: 'order-missing' };
+            if (order.length !== board.arrows.length)   return { valid: false, reason: 'order-length' };
+
+            var C = board.COLS, R = board.ROWS;
+            var byId = new Map(), occ = new Map();
+            for (var i = 0; i < board.arrows.length; i++) {
+                var a = board.arrows[i];
+                byId.set(a.id, a);
+                for (var j = 0; j < a.body.length; j++) occ.set(a.body[j], a.id);
+            }
+
+            var removed = new Set();
+            for (var k = 0; k < order.length; k++) {
+                var id = order[k], p = byId.get(id);
+                if (!p)              return { valid: false, reason: 'unknown-arrow:' + id };
+                if (removed.has(id)) return { valid: false, reason: 'duplicate-arrow:' + id };
+                var head = p.body[p.body.length - 1];
+                var own = new Set(p.body);
+                var clear = lane(head, p.dir, C, R).every(function (x) { return !occ.has(x) || own.has(x); });
+                if (!clear)          return { valid: false, reason: 'illegal-clear:' + id };
+                for (var m = 0; m < p.body.length; m++) occ.delete(p.body[m]);
                 removed.add(id);
             }
-            if (removed.size !== board.paths.length) return { valid: false, reason: 'incomplete' };
+            if (removed.size !== board.arrows.length) return { valid: false, reason: 'incomplete' };
             return { valid: true, reason: 'ok' };
         }
     `, sandbox);
@@ -88,32 +118,26 @@ function createGenerator() {
     const sandbox = buildSandbox();
 
     return {
-        // Generates one board and returns the serialized, JSON-safe document.
-        build({ rows, cols, level, batch = 4, context = 'normal' } = {}) {
-            const r = rows  ?? config.race.rows;
-            const c = cols  ?? config.race.cols;
-            const l = level ?? config.race.level;
-
-            sandbox.__r = r; sandbox.__c = c; sandbox.__l = l;
-            sandbox.__b = batch; sandbox.__x = context;
-
-            // Run inside the context so instanceof / typed-array realms line up.
-            const result = vm.runInContext('gen.build(__r, __c, __l, __b, __x)', sandbox);
-            if (!result || !result.paths || !result.grid) {
+        // Generate one board → serialized, JSON-safe, client-ready document.
+        build({ rows, cols, level, tier } = {}) {
+            sandbox.__r = rows ?? 40;
+            sandbox.__c = cols ?? 24;
+            sandbox.__l = level ?? 12;
+            sandbox.__t = tier || null;
+            const board = vm.runInContext('__build(__r, __c, __l, __t)', sandbox);
+            if (!board || !board.arrows || !board.arrows.length) {
                 throw new Error('[generator] build returned no board');
             }
-            return serializeResult(result, l);
+            return serializeBoard(board);
         },
 
-        // The generator's size table for a level. For milestone levels
-        // (multiples of 10) this returns the shape's intended sizes.
+        // The size(s) a level can use (shaped levels return the shape's size).
         sizesForLevel(level) {
             sandbox.__L = level;
-            return vm.runInContext('gen.sizesForLevel(__L)', sandbox) || [];
+            return vm.runInContext('__sizesForLevel(__L)', sandbox) || [];
         },
 
-        // Verifies a player's clear order against a serialized board.
-        // Returns { valid: boolean, reason: string }.
+        // Verify a player's clear order against a serialized board.
         verifySolution(board, order) {
             sandbox.__vb = board;
             sandbox.__vo = order;

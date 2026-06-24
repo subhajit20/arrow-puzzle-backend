@@ -136,7 +136,7 @@ class RoomService {
             if (p.status === 'disconnected') continue;
             p.status = 'racing';
             p.cleared = 0;
-            p.total = board.paths.length;
+            p.total = board.arrows.length;
             p.finishedAt = null;
             p.placement = null;
         }

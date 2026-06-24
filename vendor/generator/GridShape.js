@@ -1267,196 +1267,112 @@ class GridShape {
         return mask;
     }
 
-    // Cycles: circle → heart → star → donut → octagon → skull → shield → leaf → trophy → crown → badge → dinosaur → chromeDino → metamaskFox → camel → scorpion → seahorse → unicornHead → petals → elephant → pawPrint → whale → brain → burger → cup → cube → cubesStack → apple → swans → dolphin → chessKnight → …
-    static forLevel(level) {
-        const shapes = [
-            GridShape.circle,
-            GridShape.heart,
-            GridShape.star,
-            GridShape.donut,
-            GridShape.octagon,
-            GridShape.skull,
-            GridShape.shield,
-            GridShape.leaf,
-            GridShape.trophy,
-            GridShape.crown,
-            GridShape.badge,
-            GridShape.dinosaur,
-            GridShape.chromeDino,
-            GridShape.metamaskFox,
-            GridShape.camel,
-            GridShape.scorpion,
-            GridShape.seahorse,
-            GridShape.unicornHead,
-            GridShape.petals,
-            GridShape.elephant,
-            GridShape.pawPrint,
-            GridShape.whale,
-            GridShape.brain,
-            GridShape.burger,
-            GridShape.cup,
-            GridShape.cube,
-            GridShape.cubesStack,
-            GridShape.apple,
-            GridShape.swans,
-            GridShape.dolphin,
-            GridShape.chessKnight,
-        ];
-        return shapes[(Math.floor(level / 10) - 1) % shapes.length];
-    }
-
-    // ── Per-shape milestone grid sizes ────────────────────────────────────────
-    // Every shape plays on one of 3 large grids tailored to its aspect ratio
-    // (wide shapes get wide boards, tall shapes tall boards) and detail level
-    // (thin features / island gaps need more resolution). All sizes keep the
-    // lattice (rows+1)×(cols+1) ≤ 3500 so the blueprint pipeline (regions,
-    // motifs, solve-order planning) stays active.
     static SHAPE_SIZES = {
-        circle: [{ rows: 40, cols: 40 }, { rows: 42, cols: 42 }, { rows: 44, cols: 44 }],
-        heart: [{ rows: 44, cols: 42 }, { rows: 46, cols: 44 }, { rows: 48, cols: 46 }],
-        star: [{ rows: 46, cols: 46 }, { rows: 48, cols: 48 }, { rows: 50, cols: 50 }],
-        donut: [{ rows: 42, cols: 42 }, { rows: 44, cols: 44 }, { rows: 46, cols: 46 }],
-        octagon: [{ rows: 40, cols: 40 }, { rows: 42, cols: 42 }, { rows: 44, cols: 44 }],
-        skull: [{ rows: 46, cols: 42 }, { rows: 48, cols: 44 }, { rows: 50, cols: 46 }],
-        shield: [{ rows: 46, cols: 40 }, { rows: 48, cols: 42 }, { rows: 50, cols: 44 }],
-        leaf: [{ rows: 46, cols: 40 }, { rows: 48, cols: 42 }, { rows: 50, cols: 44 }],
-        trophy: [{ rows: 48, cols: 42 }, { rows: 50, cols: 44 }, { rows: 52, cols: 46 }],
-        crown: [{ rows: 38, cols: 48 }, { rows: 40, cols: 50 }, { rows: 42, cols: 52 }],
-        badge: [{ rows: 42, cols: 42 }, { rows: 44, cols: 44 }, { rows: 46, cols: 46 }],
-        dinosaur: [{ rows: 44, cols: 52 }, { rows: 46, cols: 54 }, { rows: 48, cols: 56 }],
-        chromeDino: [{ rows: 44, cols: 46 }, { rows: 46, cols: 48 }, { rows: 48, cols: 50 }],
-        metamaskFox: [{ rows: 46, cols: 46 }, { rows: 48, cols: 48 }, { rows: 50, cols: 50 }],
-        camel: [{ rows: 42, cols: 50 }, { rows: 44, cols: 52 }, { rows: 46, cols: 54 }],
-        scorpion: [{ rows: 50, cols: 52 }, { rows: 52, cols: 54 }, { rows: 54, cols: 56 }],
-        seahorse: [{ rows: 52, cols: 38 }, { rows: 54, cols: 40 }, { rows: 56, cols: 42 }],
-        unicornHead: [{ rows: 48, cols: 42 }, { rows: 50, cols: 44 }, { rows: 52, cols: 46 }],
-        petals: [{ rows: 44, cols: 44 }, { rows: 46, cols: 46 }, { rows: 48, cols: 48 }],
-        elephant: [{ rows: 44, cols: 50 }, { rows: 46, cols: 52 }, { rows: 48, cols: 54 }],
-        pawPrint: [{ rows: 42, cols: 44 }, { rows: 44, cols: 46 }, { rows: 46, cols: 48 }],
-        whale: [{ rows: 40, cols: 52 }, { rows: 42, cols: 54 }, { rows: 44, cols: 56 }],
-        brain: [{ rows: 42, cols: 48 }, { rows: 44, cols: 50 }, { rows: 46, cols: 52 }],
-        burger: [{ rows: 40, cols: 48 }, { rows: 42, cols: 50 }, { rows: 44, cols: 52 }],
-        cup: [{ rows: 44, cols: 50 }, { rows: 46, cols: 52 }, { rows: 48, cols: 54 }],
-        cube: [{ rows: 46, cols: 46 }, { rows: 48, cols: 48 }, { rows: 50, cols: 50 }],
-        cubesStack: [{ rows: 52, cols: 52 }, { rows: 54, cols: 54 }, { rows: 55, cols: 55 }],
-        apple: [{ rows: 46, cols: 44 }, { rows: 48, cols: 46 }, { rows: 50, cols: 48 }],
-        swans: [{ rows: 44, cols: 48 }, { rows: 46, cols: 50 }, { rows: 48, cols: 52 }],
-        dolphin: [{ rows: 42, cols: 50 }, { rows: 44, cols: 52 }, { rows: 46, cols: 54 }],
-        chessKnight: [{ rows: 50, cols: 34 }, { rows: 52, cols: 36 }, { rows: 54, cols: 38 }],
+        circle: [{ rows: 52, cols: 52 }, { rows: 55, cols: 55 }, { rows: 57, cols: 57 }],
+        heart: [{ rows: 57, cols: 55 }, { rows: 60, cols: 57 }, { rows: 62, cols: 60 }],
+        star: [{ rows: 60, cols: 60 }, { rows: 62, cols: 62 }, { rows: 65, cols: 65 }],
+        donut: [{ rows: 55, cols: 55 }, { rows: 57, cols: 57 }, { rows: 60, cols: 60 }],
+        octagon: [{ rows: 52, cols: 52 }, { rows: 55, cols: 55 }, { rows: 57, cols: 57 }],
+        skull: [{ rows: 60, cols: 55 }, { rows: 62, cols: 57 }, { rows: 65, cols: 60 }],
+        shield: [{ rows: 60, cols: 52 }, { rows: 62, cols: 55 }, { rows: 65, cols: 57 }],
+        leaf: [{ rows: 60, cols: 52 }, { rows: 62, cols: 55 }, { rows: 65, cols: 57 }],
+        trophy: [{ rows: 62, cols: 55 }, { rows: 65, cols: 57 }, { rows: 68, cols: 60 }],
+        crown: [{ rows: 49, cols: 62 }, { rows: 52, cols: 65 }, { rows: 55, cols: 68 }],
+        badge: [{ rows: 55, cols: 55 }, { rows: 57, cols: 57 }, { rows: 60, cols: 60 }],
+        dinosaur: [{ rows: 57, cols: 68 }, { rows: 60, cols: 70 }, { rows: 62, cols: 73 }],
+        chromeDino: [{ rows: 57, cols: 60 }, { rows: 60, cols: 62 }, { rows: 62, cols: 65 }],
+        metamaskFox: [{ rows: 60, cols: 60 }, { rows: 62, cols: 62 }, { rows: 65, cols: 65 }],
+        camel: [{ rows: 55, cols: 65 }, { rows: 57, cols: 68 }, { rows: 60, cols: 70 }],
+        scorpion: [{ rows: 65, cols: 68 }, { rows: 68, cols: 70 }, { rows: 70, cols: 73 }],
+        seahorse: [{ rows: 68, cols: 49 }, { rows: 70, cols: 52 }, { rows: 73, cols: 55 }],
+        unicornHead: [{ rows: 62, cols: 55 }, { rows: 65, cols: 57 }, { rows: 68, cols: 60 }],
+        petals: [{ rows: 57, cols: 57 }, { rows: 60, cols: 60 }, { rows: 62, cols: 62 }],
+        elephant: [{ rows: 57, cols: 65 }, { rows: 60, cols: 68 }, { rows: 62, cols: 70 }],
+        pawPrint: [{ rows: 55, cols: 57 }, { rows: 57, cols: 60 }, { rows: 60, cols: 62 }],
+        whale: [{ rows: 52, cols: 68 }, { rows: 55, cols: 70 }, { rows: 57, cols: 73 }],
+        brain: [{ rows: 55, cols: 62 }, { rows: 57, cols: 65 }, { rows: 60, cols: 68 }],
+        burger: [{ rows: 52, cols: 62 }, { rows: 55, cols: 65 }, { rows: 57, cols: 68 }],
+        cup: [{ rows: 57, cols: 65 }, { rows: 60, cols: 68 }, { rows: 62, cols: 70 }],
+        cube: [{ rows: 60, cols: 60 }, { rows: 62, cols: 62 }, { rows: 65, cols: 65 }],
+        cubesStack: [{ rows: 68, cols: 68 }, { rows: 70, cols: 70 }, { rows: 72, cols: 72 }],
+        apple: [{ rows: 60, cols: 57 }, { rows: 62, cols: 60 }, { rows: 65, cols: 62 }],
+        swans: [{ rows: 57, cols: 62 }, { rows: 60, cols: 65 }, { rows: 62, cols: 68 }],
+        dolphin: [{ rows: 55, cols: 65 }, { rows: 57, cols: 68 }, { rows: 60, cols: 70 }],
+        chessKnight: [{ rows: 65, cols: 44 }, { rows: 68, cols: 47 }, { rows: 70, cols: 49 }],
     };
 
-    // Returns the 3 candidate grid sizes for the milestone shape at this level.
-    static milestoneSizes(level) {
-        const fn = GridShape.forLevel(level);
-        return GridShape.SHAPE_SIZES[fn?.name] ||
-            [{ rows: 44, cols: 44 }, { rows: 46, cols: 46 }, { rows: 48, cols: 48 }];
+    // ── Level → shape + suitable size ─────────────────────────────────────────
+    // Milestone levels (every 10th) cycle through these shapes; each shape uses its preferred
+    // size from SHAPE_SIZES. (Cell convention: maskFor returns a C*R cell mask, index r*C + c.)
+    static SHAPES = [
+        "circle", "heart", "star", "donut", "octagon", "skull", "shield", "leaf", "trophy", "crown",
+        "badge", "dinosaur", "chromeDino", "metamaskFox", "camel", "scorpion", "seahorse", "unicornHead",
+        "petals", "elephant", "pawPrint", "whale", "brain", "burger", "cup", "cube", "cubesStack",
+        "apple", "swans", "dolphin", "chessKnight",
+    ];
+
+    // Motifs each shape may use to fill its mask. Big open shapes allow long pieces; thin/detailed
+    // pictograms use only short pieces (bend/staircase) that fit their narrow features. Include
+    // "corridor" to allow the long-straight accent. Falls back to all motifs if a shape is missing.
+    static SHAPE_MOTIFS = {
+        circle: ["spiral", "comb", "bend", "corridor"],
+        heart: ["spiral", "comb", "snake", "bend"],
+        star: ["meander", "staircase", "bend"],
+        donut: ["spiral", "comb", "bend"],
+        octagon: ["meander", "comb", "staircase", "bend", "corridor"],
+        skull: ["bend", "staircase"],
+        shield: ["meander", "comb", "bend"],
+        leaf: ["staircase", "bend", "comb"],
+        trophy: ["comb", "staircase", "bend"],
+        crown: ["meander", "staircase", "bend"],
+        badge: ["spiral", "comb", "bend"],
+        dinosaur: ["bend", "staircase"],
+        chromeDino: ["bend", "staircase"],
+        metamaskFox: ["staircase", "bend", "meander"],
+        camel: ["bend", "staircase"],
+        scorpion: ["bend", "staircase"],
+        seahorse: ["bend", "staircase"],
+        unicornHead: ["bend", "staircase"],
+        petals: ["spiral", "comb", "bend"],
+        elephant: ["bend", "staircase", "comb"],
+        pawPrint: ["spiral", "bend"],
+        whale: ["snake", "comb", "bend"],
+        brain: ["meander", "comb", "bend"],
+        burger: ["snake", "comb", "bend"],
+        cup: ["comb", "staircase", "bend"],
+        cube: ["comb", "staircase", "bend", "meander"],
+        cubesStack: ["meander", "comb", "staircase", "bend"],
+        apple: ["spiral", "comb", "bend"],
+        swans: ["bend", "staircase", "comb"],
+        dolphin: ["snake", "bend", "staircase"],
+        chessKnight: ["meander", "snake", "spiral"],
+    };
+
+    // The motif allow-list for a shape (null → generator uses its normal random palette).
+    static motifsFor(name) {
+        return GridShape.SHAPE_MOTIFS[name] || null;
     }
 
-    // Returns the shape function for today's daily puzzle.
-    // Cycles through all shapes based on day of year.
-    static forDay() {
-        const jan1 = new Date(new Date().getFullYear(), 0, 1);
-        const dayOfYr = Math.floor((Date.now() - jan1.getTime()) / 86400000);
-        const shapes = [
-            GridShape.circle,
-            GridShape.heart,
-            GridShape.star,
-            GridShape.donut,
-            GridShape.octagon,
-            GridShape.skull,
-            GridShape.shield,
-            GridShape.leaf,
-            GridShape.trophy,
-            GridShape.crown,
-            GridShape.badge,
-            GridShape.dinosaur,
-            GridShape.chromeDino,
-            GridShape.metamaskFox,
-            GridShape.camel,
-            GridShape.scorpion,
-            GridShape.seahorse,
-            GridShape.unicornHead,
-            GridShape.petals,
-            GridShape.elephant,
-            GridShape.pawPrint,
-            GridShape.whale,
-            GridShape.brain,
-            GridShape.burger,
-            GridShape.cup,
-            GridShape.cube,
-            GridShape.apple,
-            GridShape.chessKnight,
-        ];
-        return shapes[dayOfYr % shapes.length];
+    static forLevel(level) {
+        const n = Math.max(0, Math.floor(level / 10) - 1);
+        return GridShape.SHAPES[n % GridShape.SHAPES.length];
     }
 
-    // ── Validation ────────────────────────────────────────────────────────────
-
-    // Checks that all active nodes in the mask form a single connected region.
-    static validate(mask, rows, cols) {
-        const W = cols + 1;
-        const total = (rows + 1) * W;
-        let activeCount = 0, firstActive = -1;
-
-        for (let i = 0; i < total; i++) {
-            if (mask[i]) { activeCount++; if (firstActive < 0) firstActive = i; }
-        }
-        if (activeCount === 0) return { connected: false, activeCount: 0 };
-
-        // Find the LARGEST connected component.
-        // BFS from the first active pixel would fail for shapes with decorative
-        // island clusters (bulb sparkles, scorpion legs, etc.) if the first pixel
-        // belongs to a small island rather than the main body.
-        const visited = new Uint8Array(total);
-        let largestComponent = 0;
-
-        for (let start = 0; start < total; start++) {
-            if (!mask[start] || visited[start]) continue;
-            const queue = [start];
-            visited[start] = 1;
-            let size = 1, qi = 0;
-            while (qi < queue.length) {
-                const k = queue[qi++];
-                const r = (k / W) | 0, c = k % W;
-                const nbrs = [k - W, k + W, k - 1, k + 1];
-                const ok = [r > 0, r < rows, c > 0, c < cols];
-                for (let n = 0; n < 4; n++) {
-                    if (ok[n] && mask[nbrs[n]] && !visited[nbrs[n]]) {
-                        visited[nbrs[n]] = 1; size++; queue.push(nbrs[n]);
-                    }
-                }
-            }
-            if (size > largestComponent) largestComponent = size;
-        }
-
-        // Accept if the largest single component covers ≥10% of all active nodes.
-        return { connected: largestComponent >= activeCount * 0.10, activeCount };
+    static sizeFor(name, idx = 0) {
+        const opts = GridShape.SHAPE_SIZES[name] || [{ rows: 55, cols: 55 }];
+        const o = opts[((idx % opts.length) + opts.length) % opts.length];
+        return { COLS: o.cols, ROWS: o.rows };
     }
 
-    // ── Main entry point ──────────────────────────────────────────────────────
+    static milestoneSize(level) {
+        return GridShape.sizeFor(GridShape.forLevel(level), Math.floor(level / 10) - 1);
+    }
 
-    // Returns { mask: Uint8Array | null, activeCount: number }
-    // mask = null means full rectangle (no shape applied).
-    static selectMask(level, rows, cols, context = 'normal') {
-        const totalCells = (rows + 1) * (cols + 1);
-        const nullResult = { mask: null, activeCount: totalCells };
-
-        const isMilestone = (level % 10 === 0) || context === 'milestone';
-        const isDaily = context === 'daily';
-        if (!isMilestone && !isDaily) return nullResult;
-
-        // Minimum board size for shapes to look meaningful
-        if (rows < 12 || cols < 10) return nullResult;
-
-        const shapeFn = isDaily ? GridShape.forDay() : GridShape.forLevel(level);
-        const mask = shapeFn(rows, cols);
-        const { connected, activeCount } = GridShape.validate(mask, rows, cols);
-
-        if (!connected || activeCount < totalCells * 0.3) {
-            console.warn(`[GridShape] L${level} mask invalid — using rectangle`);
-            return nullResult;
-        }
-
-        return { mask, activeCount };
+    // Build a C*R cell mask for a named shape. Production shape fns use a node lattice
+    // ((R+1)*(C+1)); calling them with (R-1, C-1) yields a mask of length R*C indexed r*C + c,
+    // which is exactly our cell convention.
+    static maskFor(name, C, R) {
+        const fn = GridShape[name];
+        return (typeof fn === "function" && GridShape.SHAPES.includes(name)) ? fn.call(GridShape, R - 1, C - 1) : null;
     }
 }
