@@ -5,18 +5,20 @@
 //   - loadGenerator.js  (loads these into the vm sandbox)
 //   - scripts/sync-generator.js  (vendors these into backend/vendor/generator)
 //
-// Order matters: dependencies first (mirrors index.html / game.html load order).
+// These are the NEW reverse-construction engine's generation subset (the same
+// classic-script files the browser loads), in dependency order:
+//   constants.js  → DIRS/COLORS/TIERS/sizeForLevel/tierForLevel/CELL_SIZE/…
+//   utils.js      → cr/rnd/pick/lane/occNbrs (needs DIRS/DK from constants)
+//   GridShape.js  → shape masks + per-shape sizes/motifs (self-contained)
+//   BoardGenerator.js → generateForTier(C,R,mask,tier,motifs) → { arrows }
+//
+// Rendering/input/HUD files are intentionally excluded — the server only
+// generates boards, it never draws them.
 // =============================================================================
 
 module.exports = [
-    'Grid.js', 'Path.js', 'SolvabilityOracle.js',
-    'ZoneMap.js', 'RCBuilder.js', 'DifficultyEngine.js',
-    'Validator.js', 'GridShape.js',
-    'BoardBlueprint.js', 'PipelineConfig.js',
-    'RegionLayout.js', 'RegionConnectivity.js',
-    'TopologyGenerator.js', 'MotifAssigner.js',
-    'MotifSkeletonGenerator.js', 'RegionNodeGraphBuilder.js', 'GlobalNodeGraphBuilder.js',
-    'PathRouter.js', 'PathInteractionDetector.js',
-    'DependencyGraphBuilder.js', 'SolveOrderPlanner.js',
-    'BoardRepairer.js', 'Generator.js',
+    'constants.js',
+    'utils.js',
+    'GridShape.js',
+    'BoardGenerator.js',
 ];

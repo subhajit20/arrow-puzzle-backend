@@ -1,39 +1,33 @@
 // =============================================================================
-// serializeBoard.js — convert a Generator.build() result into a portable,
-// JSON-safe board document.
+// serializeBoard.js — convert a __build() result into a portable, JSON-safe
+// board document for the new reverse-construction engine.
 //
-// The shape matches the browser's Persistence V5 format (gridRows/gridCols,
-// hEdge[], vEdge[], paths[]) so the client can render it with its existing
-// deserialize path — PLUS `mask`, so a shaped board renders identically
-// without the client re-deriving it. This is the "share the board by id"
-// artifact: everything needed to render, nothing that must be recomputed.
+// The shape is exactly what the React client's GameState consumes:
+//   { level, tier, COLS, ROWS, mask, arrows: [{ id, body:[cellId…], dir }] }
+//   - cellId = r*COLS + c (single grid; no micro-grid / hEdge / vEdge)
+//   - dir    = "N" | "S" | "E" | "W"
+//   - mask   = Uint8Array flattened to a plain array (1 = in-board), or null
+// This is the "share the board by id" artifact: everything needed to render,
+// nothing the client must recompute.
+//
+// Note: the vm sandbox is given Node's own Array/Set/typed-array globals, so
+// the build result is already Node-realm; Array.from is used only to flatten
+// the mask Uint8Array and to defensively copy bodies.
 // =============================================================================
 
-// Typed arrays from the vm sandbox are a different realm than Node's, but
-// Array.from() works on any array-like / iterable across realms.
-const toArray = (row) => Array.from(row);
-
-function serializeResult(result, level) {
-    const { grid, paths, difficulty } = result;
-
+function serializeBoard(board) {
     return {
-        version:         5,
-        gridRows:        grid.rows,
-        gridCols:        grid.cols,
-        level,
-        boardDifficulty: difficulty || 'NORMAL',
-        mask:            grid.mask ? Array.from(grid.mask) : null,
-        hEdge:           grid.hEdge.map(toArray),
-        vEdge:           grid.vEdge.map(toArray),
-        paths: paths.map((p) => ({
-            id:            p.id,
-            nodes:         p.nodes.map((n) => ({ r: n.r, c: n.c })),
-            heading:       p.heading,
-            state:         'IDLE',
-            animProgress:  0,
-            originalNodes: (p.originalNodes || p.nodes).map((n) => ({ r: n.r, c: n.c })),
+        level: board.level,
+        tier:  board.tier,
+        COLS:  board.COLS,
+        ROWS:  board.ROWS,
+        mask:  board.mask ? Array.from(board.mask) : null,
+        arrows: board.arrows.map((a) => ({
+            id:   a.id,
+            body: Array.from(a.body),
+            dir:  a.dir,
         })),
     };
 }
 
-module.exports = { serializeResult };
+module.exports = { serializeBoard };

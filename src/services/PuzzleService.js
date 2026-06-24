@@ -46,13 +46,13 @@ class PuzzleService {
 
         const doc = {
             boardJson: board,
-            genParams: { rows: board.gridRows, cols: board.gridCols, level: board.level },
+            genParams: { rows: board.ROWS, cols: board.COLS, level: board.level },
             genMs,
             createdAt: new Date(),
         };
         const res = await db.puzzles().insertOne(doc);
-        console.log(`[puzzle] generated ${board.gridRows}x${board.gridCols} L${level} ` +
-            `(${board.paths.length} paths, ${board.boardDifficulty}, ${genMs}ms) → ${res.insertedId}`);
+        console.log(`[puzzle] generated ${board.ROWS}x${board.COLS} L${level} ` +
+            `(${board.arrows.length} arrows, ${board.tier}, ${genMs}ms) → ${res.insertedId}`);
 
         return { puzzleId: res.insertedId.toString(), board };
     }
