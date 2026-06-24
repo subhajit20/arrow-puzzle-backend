@@ -111,9 +111,10 @@ class BoardGenerator {
             palette = MOTIFS.filter(m => motifs.includes(m.name));   // shape's allowed motifs only
         }
         if (!palette || !palette.length) {
-            // Always include comb; the rest (meander included) are random extras for variety.
-            const always = MOTIFS.filter(m => m.name === 'comb');
-            const others = MOTIFS.filter(m => m.name !== 'comb').sort(() => Math.random() - 0.5).slice(0, 1 + rnd(2));
+            // Always include ONE of meander / wander (chosen at random), plus 1 random other.
+            const sig = pick(['meander', 'wander']);
+            const always = MOTIFS.filter(m => m.name === sig);
+            const others = MOTIFS.filter(m => m.name !== sig).sort(() => Math.random() - 0.5).slice(0, 1 + rnd(1));
             palette = [...always, ...others];
         }
         const paletteWeight = palette.reduce((s, m) => s + m.weight, 0);
