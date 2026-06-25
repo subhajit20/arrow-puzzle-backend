@@ -42,6 +42,7 @@ class RoomService {
     // ── Create / join ───────────────────────────────────────────────────────
 
     async createRoom(name, socketId) {
+        if (!name || !String(name).trim()) throw new Error('A name is required to create a room');
         let code;
         do { code = generateCode(); } while (this.rooms.has(code));
 
@@ -69,6 +70,7 @@ class RoomService {
     }
 
     async joinRoom(code, name, socketId) {
+        if (!name || !String(name).trim()) throw new Error('A name is required to join a room');
         const room = this.rooms.get(code);
         if (!room)                  throw new Error('Room not found');
         if (!IDLE.has(room.status)) throw new Error('Game already in progress');
